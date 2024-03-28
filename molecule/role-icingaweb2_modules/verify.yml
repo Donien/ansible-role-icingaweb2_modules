@@ -1,0 +1,84 @@
+---
+
+- name: Verify
+  hosts: all
+
+  vars:
+    expected_config: |
+      [grafana]
+      host = "grafana.localdomain:3000"
+      protocol = "http"
+      timerangeAll = "1w/w"
+      defaultdashboard = "icinga2-default"
+      defaultdashboarduid = "1"
+      defaultdashboardpanelid = "1"
+      defaultorgid = "1"
+      shadows = "0"
+      theme = "light"
+      datasource = "influxdb"
+      accessmode = "indirectproxy"
+      debug = "0"
+      authentication = "basic"
+      indirectproxyrefresh = "yes"
+      height = "280"
+      width = "640"
+      enableLink = "yes"
+      username = "someuser"
+      password = "12345678"
+    expected_graphs: |
+      [test1]
+      dashboard = "test_dashboard_1"
+      dashboarduid = "test_dashboarduid_1"
+      panelId = "1"
+      orgId = ""
+      repeatable = "yes"
+
+      [test2]
+      dashboard = "test_dashboard_2"
+      dashboarduid = "test_dashboarduid_2"
+      panelId = "somepanel"
+      orgId = "someorg"
+      repeatable = "yes"
+      nmetrics = "4"
+      width = "300"
+
+  tasks:
+    - name: Get content of config.ini
+      ansible.builtin.slurp:
+        src: "/etc/icingaweb2/modules/grafana/config.ini"
+      register: actual_config
+
+    - name: Get content of graphs.ini
+      ansible.builtin.slurp:
+        src: "/etc/icingaweb2/modules/grafana/graphs.ini"
+      register: actual_graphs
+
+    - name: Print actual config.ini
+      ansible.builtin.debug:
+        msg: "{{ actual_config.content | b64decode }}"
+
+    - name: Print actual graphs.ini
+      ansible.builtin.debug:
+        msg: "{{ actual_graphs.content | b64decode | trim }}"
+
+    - name: Ensure actual content matches expected
+      ansible.builtin.assert:
+        that:
+          - "expected_config == actual_config.content | b64decode"
+          - "expected_graphs | trim == actual_graphs.content | b64decode | trim"
+
+    - name: Get current branch or tag
+      changed_when: false
+      ansible.builtin.shell: "git symbolic-ref --short HEAD 2>/dev/null || git describe --tags"
+      args:
+        chdir: "/usr/share/icingaweb2/modules/grafana/"
+      register: git_version
+
+    - name: Print current Git version
+      ansible.builtin.debug:
+        msg: "{{ git_version }}"
+
+    - name: Ensure correct version of Git installation
+      ansible.builtin.assert:
+        that:
+          - "git_version.stdout == 'v2.0.3'"

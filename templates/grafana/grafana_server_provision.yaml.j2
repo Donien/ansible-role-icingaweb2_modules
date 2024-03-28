@@ -1,0 +1,11 @@
+{% set _defaultorgid = "1" %}
+apiVersion: 1
+providers:
+  - name: 'default'
+    orgId: {{ icingaweb2_modules.grafana.config.defaultorgid | default(_defaultorgid) }}
+    folder: '{{ icingaweb2_modules_grafana_dashboard_folder_name }}'
+    folderUid: ''
+    type: file
+    options:
+      path: {{ icingaweb2_modules_grafana_server_dashboard_path }}
+

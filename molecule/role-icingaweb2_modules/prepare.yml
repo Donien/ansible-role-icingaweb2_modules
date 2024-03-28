@@ -1,0 +1,45 @@
+---
+
+- name: Prepare
+  hosts: all
+
+  tasks:
+    - name: Install requirements Debian
+      apt:
+        name:
+          - "git"
+        update_cache: true
+      when: ansible_os_family | lower == "debian"
+
+    - name: Create icingaweb2 group
+      ansible.builtin.group:
+        state: present
+        name: "icingaweb2"
+        system: true
+
+    - name: Create expected directories
+      vars:
+        web_user: "{{ 'www-data' if ansible_os_family | lower == 'debian' else 'apache' if ansible_os_family | lower == 'redhat' }}"
+      loop:
+        - path: "/etc/icingaweb2"
+          mode: "2770"
+          owner: "{{ web_user }}"
+          group: "icingaweb2"
+        - path: "/etc/icingaweb2/modules"
+          mode: "2770"
+          owner: "{{ web_user }}"
+          group: "icingaweb2"
+        - path: "/etc/icingaweb2/enabledModules"
+          mode: "2770"
+          owner: "{{ web_user }}"
+          group: "icingaweb2"
+        - path: "/usr/share/icingaweb2/modules"
+          mode: "0766"
+          owner: "root"
+          group: "root"
+      file:
+        state: directory
+        path: "{{ item.path }}"
+        owner: "{{ item.owner }}"
+        group: "{{ item.group }}"
+        mode: "{{ item.mode }}"

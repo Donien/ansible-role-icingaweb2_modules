@@ -1,0 +1,74 @@
+---
+
+- name: Include OS specific variables
+  ansible.builtin.include_vars: "{{ lookup('first_found', params) }}"
+  vars:
+    params:
+      files:
+        - "{{ ansible_os_family | lower }}_{{ ansible_distribution | lower }}_{{ ansible_distribution_major_version | lower }}.yml"
+        - "{{ ansible_os_family | lower }}_{{ ansible_distribution_major_version | lower }}.yml"
+        - "{{ ansible_os_family | lower }}_{{ ansible_distribution | lower }}.yml"
+        - "{{ ansible_os_family | lower }}.yml"
+        - "default.yml"
+      paths:
+        - "{{ role_path }}/vars"
+
+- name: Install Icinga Web 2 Module
+  when:
+    - icingaweb2_modules is defined
+    - _current_module.key in _icingaweb2_modules_known_modules
+  loop: "{{ icingaweb2_modules | dict2items }}"
+  loop_control:
+    loop_var: _current_module
+  vars:
+    _module_name: "{{ _current_module.key }}"
+    _module: "{{ icingaweb2_modules[_current_module.key] }}"
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/install_module.yml"
+
+- name: Enable/Disable module
+  become: true
+  when:
+    - icingaweb2_modules is defined
+    - _current_module.key in _icingaweb2_modules_known_modules
+    - _enabled != omit
+  loop: "{{ icingaweb2_modules | dict2items }}"
+  loop_control:
+    loop_var: _current_module
+  vars:
+    _enabled: "{{ _current_module.value.enabled | default(omit) }}"
+    _symlink_src: "{{ icingaweb2_modules_path }}/{{ _current_module.key }}"
+    _symlink_dest: "{{ icingaweb2_modules_config_path }}/enabledModules/{{ _current_module.key }}"
+  ansible.builtin.file:
+    state: "{{ 'link' if _enabled == true else 'absent' }}"
+    force: true
+    src: "{{ _symlink_src if _enabled }}"
+    dest: "{{ _symlink_dest }}"
+    owner: "root"
+    group: "root"
+    mode: "0777"
+
+- name: Make sure configuration directory for module exists
+  become: true
+  when:
+    - icingaweb2_modules is defined
+    - _current_module.key in _icingaweb2_modules_known_modules
+  loop: "{{ icingaweb2_modules | dict2items }}"
+  loop_control:
+    loop_var: _current_module
+  ansible.builtin.file:
+    state: directory
+    path: "{{ icingaweb2_modules_config_path }}/modules/{{ _current_module.key }}"
+    owner: "{{ _icingaweb2_modules_web2_user }}"
+    group: "{{ _icingaweb2_modules_web2_group }}"
+    mode: "2770"
+
+- name: Configure module
+  when:
+    - icingaweb2_modules is defined
+    - _current_module.key in _icingaweb2_modules_known_modules
+  loop: "{{ icingaweb2_modules | dict2items }}"
+  loop_control:
+    loop_var: _current_module
+  vars:
+    _module: "{{ icingaweb2_modules[_current_module.key] }}"
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/configure_{{ _current_module.key }}.yml"

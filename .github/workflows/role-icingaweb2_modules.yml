@@ -1,0 +1,80 @@
+---
+
+name: Role icingaweb2_modules
+on:
+  push:
+    branches:
+      - "main"
+      - "feature/**"
+      - "fix/**"
+      - "!doc/**"
+    paths:
+      - "roles/icingaweb2_modules/**"
+      - "molecule/icingaweb2_modules/**"
+  pull_request:
+    branches:
+      - "feature/**"
+      - "fix/**"
+      - "!doc/**"
+
+jobs:
+  icingaweb2_modules:
+    runs-on: "ubuntu-latest"
+
+    env:
+      COLLECTION_NAMESPACE: "netways"
+      COLLECTION_NAME: "icinga_contrib"
+      ROLE_NAME: "icingaweb2_modules"
+
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        distro:
+          - "ubuntu2204"
+        python:
+          - "3.10"
+          - "3.11"
+        ansible:
+          - "2.14"
+          - "2.15"
+          - "2.16"
+        scenario:
+          - "role-icingaweb2_modules"
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install dependencies ansible
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -r testing-requirements.txt
+          python3 -m pip install ansible-core==${{ matrix.ansible }}
+
+      - name: LS
+        run: ls -lA
+
+      - name: LS 2
+        run: ls -lA ..
+
+      - name: Install collection
+        run: |
+          mkdir -p ~/.ansible/roles/$COLLECTION_NAMESPACE/$ROLE_NAME
+          cp -a ../$ROLE_NAME ~/.ansible/roles/$COLLECTION_NAMESPACE/$ROLE_NAME
+
+          #mkdir -p ~/.ansible/collections/ansible_collections/$COLLECTION_NAMESPACE
+          #cp -a ../$ROLE_NAME ~/.ansible/collections/ansible_collections/$COLLECTION_NAMESPACE/$COLLECTION_NAME
+
+      - name: Test with molecule
+        run: |
+          ansible --version
+          molecule --version
+          molecule test -s ${{ matrix.scenario }}
+        env:
+          MOLECULE_DISTRO: ${{ matrix.distro }}

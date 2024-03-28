@@ -1,0 +1,40 @@
+---
+- name: Converge
+  hosts: all
+  gather_facts: true
+
+  vars:
+    icingaweb2_modules:
+      grafana:
+        source: git
+        url: "https://github.com/Mikesch-mp/icingaweb2-module-grafana.git"
+        version: "v2.0.3"
+        enabled: true
+        backend: "influxdb"
+        grafana_host: "grafana.localdomain"
+        config:
+          grafana:
+            host: "grafana.localdomain:3000"
+            defaultdashboard: "icinga2-default"
+            authentication: "basic"
+            username: "someuser"
+            password: "12345678"
+            enableLink: true
+        graphs:
+          test1:
+            dashboard: "test_dashboard_1"
+            dashboarduid: "test_dashboarduid_1"
+          test2:
+            dashboard: "test_dashboard_2"
+            dashboarduid: "test_dashboarduid_2"
+            panelId: "somepanel"
+            orgId: "someorg"
+            repeatable: true
+            nmetrics: 4
+            heigth: 300
+            width: 300
+
+  tasks:
+    - name: Test role
+      ansible.builtin.include_role:
+        name: icingaweb2_modules

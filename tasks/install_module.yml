@@ -1,0 +1,75 @@
+---
+
+- name: Package
+  block:
+    - name: Get list of installed packages
+      ansible.builtin.package_facts:
+
+    - name: Remove module directory if package is not installed
+      become: true
+      when:
+        - _module.source | lower == "package"
+        - ansible_facts.packages[_module.package_name | default(_module_name)] is not defined
+      ansible.builtin.file:
+        state: absent
+        path: "{{ icingaweb2_modules_path }}/{{ _module_name }}"
+
+    - name: Install from package
+      become: true
+      when: _module.source | lower == "package"
+      ansible.builtin.package:
+        state: present
+        name: "{{ _module.package_name | default(_module_name) }}"
+
+    - name: Remove package
+      become: true
+      when: _module.source | lower != "package"
+      ansible.builtin.package:
+        state: absent
+        name: "{{ _module.package_name | default(_module_name) }}"
+
+- name: Git
+  block:
+    - name: Install from git
+      become: true
+      when: _module.source | lower == "git"
+      ansible.builtin.git:
+        repo: "{{ _module.url }}"
+        dest: "{{ icingaweb2_modules_path }}/{{ _module_name }}"
+        version: "{{ _module.version | default(omit) }}"
+  rescue:
+    - name: Remove existing directory
+      become: true
+      ansible.builtin.file:
+        state: absent
+        path: "{{ icingaweb2_modules_path }}/{{ _module_name }}"
+
+    - name: Install from git
+      become: true
+      when: _module.source | lower == "git"
+      ansible.builtin.git:
+        repo: "{{ _module.url }}"
+        dest: "{{ icingaweb2_modules_path }}/{{ _module_name }}"
+        version: "{{ _module.version | default(omit) }}"
+
+- name: Archive
+  block:
+    - name: Make sure directory exists
+      become: true
+      when: _module.source | lower == "archive"
+      ansible.builtin.file:
+        state: directory
+        path: "{{ icingaweb2_modules_path }}/{{ _module_name }}"
+        owner: "root"
+        group: "root"
+        mode: "0766"
+
+    - name: Install from tar ball
+      become: true
+      when: _module.source | lower == "archive"
+      ansible.builtin.unarchive:
+        src: "{{ _module.url }}"
+        dest: "{{ icingaweb2_modules_path }}/{{ _module_name }}"
+        remote_src: true
+        extra_opts:
+          - "--strip-components=1"

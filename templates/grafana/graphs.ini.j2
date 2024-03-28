@@ -1,0 +1,30 @@
+{% for _section in _graphs %}
+{%   set _section_name = _section.key %}
+{%   set _content = _section.value %}
+{%   set _dashboarduid = (_grafana_api_search.json | default([]) | selectattr('title', 'match', _section_name) | first).uid | default('') %}
+{%   set _panelId = "1" %}
+{%   set _orgId = "" %}
+{%   set _repeatable = "no" %}
+[{{ _section_name }}]
+dashboard = "{{ _content.dashboard | default(_dashboarduid) }}"
+dashboarduid = "{{ _content.dashboarduid | default(_dashboarduid) }}"
+panelId = "{{ _content.panelId | default(_panelId) }}"
+orgId = "{{ _content.orgId | default(_orgId) }}"
+repeatable = "{{ "yes" if _content.repeatable | default(_repeatable) }}"
+{%   if _content.repeatable | default(_repeatable) and _content.nmetrics | default(false) %}
+nmetrics = "{{ _content.nmetrics }}"
+{%   endif %}
+{%   if _content.customVars | default(false) %}
+customVars = "{{ _content.customVars }}"
+{%   endif %}
+{%   if _content.timerange | default(false) %}
+timerange = "{{ _content.timerange }}"
+{%   endif %}
+{%   if _content.height | default(false) %}
+height = "{{ _content.height }}"
+{%   endif %}
+{%   if _content.width | default(false) %}
+width = "{{ _content.width }}"
+{%   endif %}
+
+{% endfor %}

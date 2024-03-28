@@ -1,0 +1,298 @@
+---
+
+# This is meant to be installed on a Debian-like OS with PHP 8.1 due to module "grafana"
+# The Grafana Image Renderer plugin will be installed but its dependencies won't
+# You can still check whether the dashboards in Icinga Web 2 lead to the correct place in Grafana
+
+- name: Make machines known to each other
+  become: true
+  hosts: all
+  tasks:
+    - name: Set FQDN equal to inventory hostname
+      when: inventory_hostname == "test-icinga"
+      ansible.builtin.hostname:
+        name: "{{ inventory_hostname }}"
+      register: _changed_fqdn
+
+    - name: Reboot
+      when: _changed_fqdn.changed | bool
+      ansible.builtin.reboot:
+
+    - name: Re-gather facts
+      ansible.builtin.gather_facts:
+
+    - name: Get IP to hostname mappings
+      run_once: true
+      loop: "{{ ansible_play_hosts_all }}"
+      ansible.builtin.set_fact:
+        _ip_name_map: "{{ _ip_name_map | default('') + hostvars[item].ansible_default_ipv4.address + '\t' + item + '\n' }}"
+
+    - name: Set entries in /etc/hosts
+      when: inventory_hostname == "test-icinga"
+      ansible.builtin.blockinfile:
+        path: "/etc/hosts"
+        append_newline: true
+        prepend_newline: true
+        block: "{{ _ip_name_map }}"
+
+- name: Set up official repository
+  become: true
+  hosts: test-icinga
+
+  roles:
+    - icinga.icinga.repos
+
+
+- name: Set up MariaDB
+  become: true
+  hosts: test-icinga
+  vars:
+    mysql_packages:
+      - "mariadb-client"
+      - "mariadb-server"
+
+    mysql_databases:
+      - name: "icingadb"
+      - name: "icingaweb"
+
+    mysql_users:
+      - name: "icingadb_user"
+        host: "localhost"
+        password: "icingadb_password"
+        priv: "icingadb.*:ALL"
+      - name: "icingaweb_user"
+        host: "localhost"
+        password: "icingaweb_password"
+        priv: "icingaweb.*:ALL"
+
+  roles:
+    - geerlingguy.mysql
+
+
+- name: Set up Icinga DB
+  become: true
+  hosts: test-icinga
+  vars:
+    icingadb_database_type: mysql
+    icingadb_database_user: "icingadb_user"
+    icingadb_database_password: "icingadb_password"
+    icingadb_database_import_schema: true
+
+  roles:
+    - icinga.icinga.icingadb
+
+
+- name: Set up Icinga DB Redis
+  become: true
+  hosts: test-icinga
+
+  roles:
+    - icinga.icinga.icingadb_redis
+
+
+- name: Set up Icinga 2
+  become: true
+  hosts: test-icinga
+
+  vars:
+    icinga2_constants:
+      NodeName: "{{ ansible_fqdn }}"
+      ZoneName: "main"
+
+    icinga2_purge_features: false
+    icinga2_features:
+      - name: api
+        ca_host: none
+        endpoints:
+          - name: "{{ ansible_fqdn }}"
+        zones:
+          - name: "main"
+            endpoints:
+              - "{{ ansible_fqdn }}"
+      - name: checker
+        state: present
+      - name: mainlog
+        severity: information
+      - name: icingadb
+        host: localhost
+        port: 6380
+
+    icinga2_confd: false
+    icinga2_config_directories:
+      - "zones.d/main/api-users/"
+      - "zones.d/main/hosts/"
+      - "zones.d/main/services/"
+
+    icinga2_objects:
+      - name: "IcingaDB-Web"
+        file: "zones.d/main/api-users/icingadb-web.conf"
+        type: ApiUser
+        password: "supersecurepassword"
+        permissions:
+          - "actions/*"
+          - "objects/modify/*"
+          - "objects/query/*"
+          - "status/query"
+      - name: "{{ ansible_fqdn }}"
+        file: "zones.d/main/hosts/hosts.conf"
+        type: Host
+        check_command: "hostalive"
+        address: "{{ ansible_default_ipv4.address }}"
+      - name: "disk"
+        file: "zones.d/main/services/services.conf"
+        type: Service
+        check_command: "disk"
+        check_interval: "30s"
+        host_name: "{{ ansible_fqdn }}"
+      - name: "load"
+        file: "zones.d/main/services/services.conf"
+        type: Service
+        check_command: "load"
+        check_interval: "30s"
+        host_name: "{{ ansible_fqdn }}"
+
+  roles:
+    - icinga.icinga.icinga2
+
+
+- name: Set up Icinga Web 2
+  become: true
+  hosts: test-icinga
+
+  vars:
+    icingaweb2_db:
+      type: mysql
+      name: "icingaweb"
+      host: "127.0.0.1"
+      user: "icingaweb_user"
+      password: "icingaweb_password"
+    icingaweb2_db_import_schema: true
+
+    icingaweb2_admin_username: "admin"
+    icingaweb2_admin_password: "123"
+
+    icingaweb2_resources:
+      icingadb:
+        type: db
+        db: mysql
+        host: "localhost"
+        dbname: "icingadb"
+        username: "icingadb_user"
+        password: "icingadb_password"
+        use_ssl: "0"
+        charset: utf8
+
+    icingaweb2_modules:
+      icingadb:
+        enabled: true
+        source: package
+        commandtransports:
+          instance01:
+            transport: api
+            host: "localhost"
+            username: "IcingaDB-Web"
+            password: "supersecurepassword"
+        config:
+          icingadb:
+            resource: "icingadb"
+          redis:
+            tls: "0"
+        redis:
+          redis1:
+            host: "localhost"
+
+  roles:
+    - icinga.icinga.icingaweb2
+
+
+- name: Install Grafana
+  become: true
+  hosts: test-grafana
+
+  vars:
+    grafana_security:
+      admin_user: "admin"
+      admin_password: "123"
+
+  roles:
+    - grafana.grafana.grafana
+
+  tasks:
+    - name: Create service account
+      failed_when: false
+      vars:
+        _basic_auth: "{{ (grafana_security.admin_user + ':' + grafana_security.admin_password) | b64encode }}"
+      uri:
+        url: "http://test-grafana:3000/api/serviceaccounts"
+        method: POST
+        status_code:
+          - "200"
+          - "201"
+        headers:
+          Authorization: "Basic {{ _basic_auth }}"
+          Content-Type: "application/json"
+        body_format: "json"
+        body:
+          name: "test"
+          role: "Admin"
+      register: _api_serviceaccount
+
+    - name: Create service account token
+      when: _api_serviceaccount.json.id is defined
+      vars:
+        _basic_auth: "{{ (grafana_security.admin_user + ':' + grafana_security.admin_password) | b64encode }}"
+        _account_id: "{{ _api_serviceaccount.json.id }}"
+      uri:
+        url: "http://test-grafana:3000/api/serviceaccounts/{{ _account_id }}/tokens"
+        method: POST
+        status_code:
+          - "200"
+          - "201"
+        headers:
+          Authorization: "Basic {{ _basic_auth }}"
+          Content-Type: "application/json"
+        body_format: "json"
+        body:
+          name: "test-token"
+      register: _api_token
+
+  post_tasks:
+    - name: Save token for later use
+      become: false
+      delegate_to: localhost
+      when: _api_token.json.key is defined
+      ansible.builtin.copy:
+        dest: "./grafana_api_token"
+        content: "{{ _api_token.json.key }}"
+
+
+- name: Test Ansible Role
+  hosts:
+    - test-icinga
+
+  vars:
+    icingaweb2_modules_grafana_import_dashboards: true
+    icingaweb2_modules:
+      grafana:
+        # Avoid uninstalling Grafana
+        package_name: icinga-grafana
+        source: git
+        url: "https://github.com/Mikesch-mp/icingaweb2-module-grafana.git"
+        version: "v2.0.3"
+        enabled: true
+        #backend: "influxdb"
+        #data_source: "influxdb_icinga"
+        #grafana_host: "test-grafana"
+        config:
+          grafana:
+            host: "{{ hostvars['test-grafana'].ansible_default_ipv4.address }}:3000"
+            defaultdashboard: "icinga2-default"
+            authentication: "token"
+            token: "{{ lookup('ansible.builtin.password', './grafana_api_token') }}"
+            accessmode: indirectproxy
+            enableLink: true
+        graphs:
+          disk:
+
+  roles:
+    - icingaweb2_modules

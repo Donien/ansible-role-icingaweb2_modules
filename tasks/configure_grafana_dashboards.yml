@@ -1,0 +1,105 @@
+---
+
+- name: Find all dashboards provided by the module
+  become: true
+  ansible.builtin.find:
+    paths: "{{ icingaweb2_modules_path }}/grafana/dashboards/{{ icingaweb2_modules.grafana.backend | default('influxdb') }}"
+    file_type: file
+    recurse: true
+  register: "_module_dashboards"
+
+- name: Read module's dashboard contents
+  become: true
+  loop: "{{ _module_dashboards.files | map(attribute='path') }}"
+  ansible.builtin.slurp:
+    src: "{{ item }}"
+  register: "_module_dashboard_contents"
+
+- name: Find all local dashboards
+  run_once: true
+  when: icingaweb2_modules.grafana.local_dasbhoards is defined
+  ansible.builtin.set_fact:
+    _local_dashboards: "{{ lookup('ansible.builtin.fileglob', icingaweb2_modules.grafana.local_dasbhoards + '/*.json', wantlist=true) }}"
+
+- name: Read local dashboard contents
+  run_once: true
+  delegate_to: localhost
+  when: _local_dashboards is defined
+  loop: "{{ _local_dashboards }}"
+  ansible.builtin.slurp:
+    src: "{{ item }}"
+  register: "_local_dashboard_contents"
+
+- name: Combine dashboards
+  run_once: true
+  loop: "{{ _module_dashboard_contents.results + _local_dashboard_contents.results | default([]) }}"
+  vars:
+    _entry: "{{ {item.source | basename | splitext | first: item.content | b64decode | regex_replace('\\$\\{DS_ICINGA.*\\}', icingaweb2_modules.grafana.data_source | default('icinga_data_source_name')) | regex_replace('\"type\": \"graph\"', '\"type\": \"timeseries\"')} }}" # yamllint disable-line rule:line-length
+  ansible.builtin.set_fact:
+    _all_dashboards: "{{ _all_dashboards | default({}) | combine(_entry) }}"
+
+- name: Make sure dashboard path exists on Grafana server
+  become: true
+  delegate_to: "{{ icingaweb2_modules.grafana.grafana_host | default(icingaweb2_modules.grafana.config.grafana.host | split(':') | first) }}"
+  ansible.builtin.file:
+    state: directory
+    path: "{{ icingaweb2_modules_grafana_server_dashboard_path }}"
+    owner: "{{ _icingaweb2_modules_grafana_server_user }}"
+    group: "{{ _icingaweb2_modules_grafana_server_group }}"
+    mode: "0550"
+
+- name: Find all existing dashboards in provisioning directory
+  become: true
+  delegate_to: "{{ icingaweb2_modules.grafana.grafana_host | default(icingaweb2_modules.grafana.config.grafana.host | split(':') | first) }}"
+  ansible.builtin.find:
+    paths: "{{ icingaweb2_modules_grafana_server_dashboard_path }}"
+    file_type: file
+    patterns: "*.json"
+    recurse: true
+  register: "_provision_dir_dashboards"
+
+- name: Remove non requested dashboards
+  become: true
+  delegate_to: "{{ icingaweb2_modules.grafana.grafana_host | default(icingaweb2_modules.grafana.config.grafana.host | split(':') | first) }}"
+  loop: "{{ _provision_dir_dashboards.files | map(attribute='path') }}"
+  when: (item | basename | splitext | first) not in (_all_dashboards | dict2items | map(attribute='key'))
+  ansible.builtin.file:
+    state: absent
+    path: "{{ item }}"
+
+- name: Deploy dashboards on Grafana server
+  become: true
+  delegate_to: "{{ icingaweb2_modules.grafana.grafana_host | default(icingaweb2_modules.grafana.config.grafana.host | split(':') | first) }}"
+  loop: "{{ _all_dashboards | dict2items }}"
+  ansible.builtin.copy:
+    dest: "{{ icingaweb2_modules_grafana_server_dashboard_path }}/{{ item.key }}.json"
+    content: "{{ item.value }}"
+    owner: "{{ _icingaweb2_modules_grafana_server_user }}"
+    group: "{{ _icingaweb2_modules_grafana_server_group }}"
+    mode: "0640"
+
+- name: Set up provisioning
+  become: true
+  delegate_to: "{{ icingaweb2_modules.grafana.grafana_host | default(icingaweb2_modules.grafana.config.grafana.host | split(':') | first) }}"
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/grafana/grafana_server_provision.yaml.j2"
+    dest: "{{ icingaweb2_modules_grafana_server_config_path }}/provisioning/dashboards/icingaweb2-grafana.yaml"
+    owner: "root"
+    group: "{{ _icingaweb2_modules_grafana_server_group }}"
+    mode: "0640"
+  register: _provisioning_file
+
+- name: Restart Grafana
+  become: true
+  delegate_to: "{{ icingaweb2_modules.grafana.grafana_host | default(icingaweb2_modules.grafana.config.grafana.host | split(':') | first) }}"
+  when: _provisioning_file.changed
+  ansible.builtin.service:
+    state: restarted
+    name: "grafana-server.service"
+
+- name: Wait for Grafana to be back up
+  delegate_to: "{{ icingaweb2_modules.grafana.grafana_host | default(icingaweb2_modules.grafana.config.grafana.host | split(':') | first) }}"
+  ansible.builtin.wait_for:
+    state: started
+    timeout: 300
+    port: "{{ icingaweb2_modules.grafana.config.grafana.host | split(':') | last | default('3000') }}"

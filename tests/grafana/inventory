@@ -1,0 +1,7 @@
+[all]
+# both servers can be the same but both must be reachable
+test-icinga     ansible_host=192.168.122.160
+test-grafana    ansible_host=192.168.122.160
+
+[all:vars]
+ansible_user=ansible

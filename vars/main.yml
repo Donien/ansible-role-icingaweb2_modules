@@ -1,0 +1,8 @@
+---
+
+# List of modules known to this role
+_icingaweb2_modules_known_modules:
+  - "grafana"
+
+_icingaweb2_modules_grafana_server_user: "grafana"
+_icingaweb2_modules_grafana_server_group: "grafana"

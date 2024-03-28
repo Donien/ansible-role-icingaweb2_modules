@@ -1,0 +1,70 @@
+---
+
+- name: Configure dashboards
+  when:
+    - icingaweb2_modules_grafana_import_dashboards
+    - icingaweb2_modules.grafana.config.grafana is defined
+  ansible.builtin.include_tasks: "{{ role_path }}/tasks/configure_grafana_dashboards.yml"
+
+- name: Check if folder uid can be fetched
+  when:
+    - icingaweb2_modules.grafana.config.grafana.host is defined
+    - icingaweb2_modules.grafana.config.grafana.token is defined
+  vars:
+    _protocol: "{{ icingaweb2_modules.grafana.config.grafana.protocol | default('http') }}"
+    _host: "{{ icingaweb2_modules.grafana.config.grafana.host | default('localhost:3000') }}"
+  ansible.builtin.uri:
+    url: "{{ _protocol }}://{{ _host }}/api/folders"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ icingaweb2_modules.grafana.config.grafana.token }}"
+      Content-Type: "application/json"
+      Accept: "application/json"
+  register: _grafana_folder_search
+
+- name: Check if the dashboard uid can be fetched
+  when:
+    - icingaweb2_modules.grafana.config.grafana.host is defined
+    - icingaweb2_modules.grafana.config.grafana.token is defined
+  vars:
+    _protocol: "{{ icingaweb2_modules.grafana.config.grafana.protocol | default('http') }}"
+    _host: "{{ icingaweb2_modules.grafana.config.grafana.host | default('localhost:3000') }}"
+    _folderuid: "{{ (_grafana_folder_search.json | selectattr('title', 'match', icingaweb2_modules_grafana_dashboard_folder_name) | first).uid | default(none) }}" # yamllint disable-line rule:line-length
+  ansible.builtin.uri:
+    url: "{{ _protocol }}://{{ _host }}/api/search?{{ 'folderIds=' + _folderuid if _folderuid else 'query=icinga2-default' }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ icingaweb2_modules.grafana.config.grafana.token }}"
+      Content-Type: "application/json"
+      Accept: "application/json"
+  register: _grafana_api_search
+
+- name: Set dashboard uid as fact
+  when:
+    - _grafana_api_search.json is defined
+    - _grafana_api_search.json | length > 0
+  ansible.builtin.set_fact:
+    _grafana_default_dashboard_uid: "{{ (_grafana_api_search.json | selectattr('title', 'match', 'icinga2-default') | first).uid }}"
+
+- name: Deploy config.ini
+  become: true
+  vars:
+    _grafana: "{{ _module.config.grafana | default(omit) }}"
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/grafana/config.ini.j2"
+    dest: "{{ icingaweb2_modules_config_path }}/modules/grafana/config.ini"
+    owner: "{{ _icingaweb2_modules_web2_user }}"
+    group: "{{ _icingaweb2_modules_web2_group }}"
+    mode: "0660"
+
+- name: Deploy graphs.ini
+  become: true
+  vars:
+    _graphs: "{{ _module.graphs | default({}) | dict2items }}"
+  when: _graphs
+  ansible.builtin.template:
+    src: "{{ role_path }}/templates/grafana/graphs.ini.j2"
+    dest: "{{ icingaweb2_modules_config_path }}/modules/grafana/graphs.ini"
+    owner: "{{ _icingaweb2_modules_web2_user }}"
+    group: "{{ _icingaweb2_modules_web2_group }}"
+    mode: "0660"

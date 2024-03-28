@@ -1,0 +1,55 @@
+{% set _host = "localhost:3000" %}
+{% set _protocol = "http" %}
+{% set _timerangeall = "1w/w" %}
+{% set _defaultdashboard = "icinga2-default" %}
+{% set _defaultdashboarduid = _grafana_default_dashboard_uid | default(1) %}
+{% set _defaultdashboardpanelid = "1" %}
+{% set _defaultorgid = "1" %}
+{% set _shadows = "0" %}
+{% set _theme = "light" %}
+{% set _datasource = "influxdb" %}
+{% set _accessmode = "indirectproxy" %}
+{% set _debug = "0" %}
+{% set _authentication = "anon" %}
+{% set _indirectproxyrefresh = "yes" %}
+{% set _height = "280" %}
+{% set _width = "640" %}
+{% set _enablelink = false %}
+[grafana]
+host = "{{ _grafana.host | default(_host) }}"
+protocol = "{{ _grafana.protocol | default(_protocol) }}"
+timerangeAll = "{{ _grafana.timerangeAll | default(_timerangeall) }}"
+defaultdashboard = "{{ _grafana.defaultdashboard | default(_defaultdashboard) }}"
+defaultdashboarduid = "{{ _grafana.defaultdashboarduid | default(_defaultdashboarduid) }}"
+defaultdashboardpanelid = "{{ _grafana.defaultdashboardpanelid | default(_defaultdashboardpanelid) }}"
+defaultorgid = "{{ _grafana.defaultorgid | default(_defaultorgid) }}"
+shadows = "{{ _grafana.shadows | default(_shadows) }}"
+theme = "{{ _grafana.theme | default(_theme) }}"
+datasource = "{{ _grafana.datasource | default(_datasource) }}"
+accessmode = "{{ _grafana.accessmode | default(_accessmode) }}"
+debug = "{{ _grafana.debug | default(_debug) }}"
+{% if _grafana.accessmode | default(_accessmode) == "indirectproxy" %}
+authentication = "{{ _grafana.authentication | default(_authentication) }}"
+indirectproxyrefresh = "{{ _grafana.indirectproxyrefresh | default(_indirectproxyrefresh) }}"
+height = "{{ _grafana.height | default(_height) }}"
+width = "{{ _grafana.width | default(_width) }}"
+enableLink = "{{ 'yes' if _grafana.enableLink | default(_enablelink) else 'no' }}"
+{% endif %}
+{% if _grafana.custvardisable | default(false) %}
+custvardisable = "{{ _grafana.custvardisable }}"
+{% endif %}
+{% if _grafana.custvarconfig | default(false) %}
+custvarconfig = "{{ _grafana.custvarconfig }}"
+{% endif %}
+{% if _grafana_accessmode | default(_accessmode) == "indirectproxy" %}
+{%   if _grafana.proxytimeout | default(false) %}
+proxytimeout = "{{ _grafana.proxytimeout }}"
+{%   endif %}
+{%   if _grafana.authentication | default(_authentication) == "basic" %}
+username = "{{ _grafana.username }}"
+password = "{{ _grafana.password }}"
+{%   endif %}
+{%   if _grafana.authentication | default(_authentication) == "token" %}
+apitoken = "{{ _grafana.token }}"
+{%   endif %}
+{% endif %}

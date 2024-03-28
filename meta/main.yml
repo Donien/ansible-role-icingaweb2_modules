@@ -1,0 +1,29 @@
+galaxy_info:
+  namespace: "netways"
+  role_name: "icingaweb2_modules"
+  description: This role handles the installation and configuration of Icinga Web 2 modules
+
+  author: |
+    - Matthias Döhler
+
+  license: GPL-2.0-only
+
+  min_ansible_version: "2.1"
+
+  platforms:
+    - name: "Debian"
+      versions:
+        - "bullseye"
+    - name: "Ubuntu"
+      versions:
+        - "jammy"
+    - name: EL
+      versions:
+        - "9"
+
+  galaxy_tags:
+    - "icinga"
+    - "icingaweb2"
+    - "grafana"
+
+dependencies: []

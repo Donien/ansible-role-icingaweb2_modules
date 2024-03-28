@@ -1,0 +1,11 @@
+---
+
+# general
+icingaweb2_modules_config_path: "/etc/icingaweb2"
+icingaweb2_modules_path: "/usr/share/icingaweb2/modules"
+
+# grafana related
+icingaweb2_modules_grafana_import_dashboards: false
+icingaweb2_modules_grafana_server_config_path: "/etc/grafana"
+icingaweb2_modules_grafana_server_dashboard_path: "/var/lib/grafana/dashboards/icingaweb2-grafana"
+icingaweb2_modules_grafana_dashboard_folder_name: "Icinga Web 2 - Grafana Module"
